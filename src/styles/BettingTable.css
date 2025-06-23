@@ -1,7 +1,9 @@
 .betting-table-container {
   padding: 20px;
 }
-
+.betting-table-container {
+  background-color: rgb(59, 7, 92); /* Or use a specific shade like #800080 */
+}
 .search-container {
   margin-bottom: 20px;
 }
