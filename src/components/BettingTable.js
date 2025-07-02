@@ -1,156 +1,110 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import data from '../../data.json';
 
-const BettingTable = ({ data = [] }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [filteredData, setFilteredData] = useState(data);
+const BettingTables = () => {
+  const match = data.data[0].matches.match;
+  console.log(match);
 
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = data.filter(
-        (match) =>
-          match?.matches?.match?.id &&
-          match.matches.match.id.toString().includes(searchTerm)
-      );
-      setFilteredData(filtered);
-      setSuggestions(
-        data
-          .filter(
-            (match) =>
-              match?.matches?.match?.id &&
-              match.matches.match.id.toString().includes(searchTerm) &&
-              match.matches.match.id.toString() !== searchTerm
-          )
-          .map((match) => match.matches.match.id.toString())
-      );
-    } else {
-      setFilteredData(data);
-      setSuggestions([]);
-    }
-  }, [searchTerm, data]);
+  const homeTeam = match.localteam.name;
+  const awayTeam = match.awayteam.name;
+  const matchDate = match.date;
+  const oddsTypes = match.odds.type;
+  const tableTypesToRender = oddsTypes
+    .filter((type) => type.stop === "False") // only active types
+    .map((type) => type.value);
 
-  const getTableData = (match) => {
-    if (!match?.matches?.match?.odds) {
-      console.log('No odds data available for match:', match);
-      return [];
+  const transformOdds = (typeValue) => {
+    const oddsType = oddsTypes.find((type) => type.value === typeValue);
+    if (!oddsType || !Array.isArray(oddsType.bookmaker)) {
+      return { headers: [], rows: [] };
     }
 
-    const odds = match.matches.match.odds;
-    if (Array.isArray(odds)) {
-      return odds.flatMap((odd) =>
-        odd?.type
-          ? odd.type.map((type) => ({
-              value: type.value || 'Unknown',
-              bookmaker: Array.isArray(type.bookmaker) ? type.bookmaker : [],
-            }))
-          : []
-      );
-    } else if (odds?.type) {
-      return Array.isArray(odds.type)
-        ? odds.type.map((type) => ({
-            value: type.value || 'Unknown',
-            bookmaker: Array.isArray(type.bookmaker) ? type.bookmaker : [],
-          }))
-        : [];
-    }
-    console.log('Invalid odds structure:', odds);
-    return [];
+    // Extract all unique odd names for this type (e.g., "1:0", "2:0", etc.)
+    const uniqueOddNames = new Set();
+    oddsType.bookmaker.forEach((bm) => {
+      if (Array.isArray(bm.odd)) {
+        bm.odd.forEach((odd) => {
+          if (odd?.name) uniqueOddNames.add(odd.name);
+        });
+      }
+    });
+
+    const sortedOddNames = Array.from(uniqueOddNames).sort(); // Sort for better readability
+    const headers = [...sortedOddNames];
+    const rows = oddsType.bookmaker.map((bm) => {
+      const row = [];
+      sortedOddNames.forEach((oddName) => {
+        const odd = Array.isArray(bm.odd) ? bm.odd.find((o) => o.name === oddName) : null;
+        row.push(odd ? parseFloat(odd.value) || '-' : '-');
+      });
+      return row;
+    });
+
+
+
+    return { headers, rows };
   };
 
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
+  const renderTable = (title, headers, rows) => {
+
+
+    return (
+      <div className="betting-card">
+        <h3>{title}</h3>
+        <div className="table-wrapper" style={{ overflowX: 'auto', maxWidth: '100%' }}>
+          <table>
+            <thead>
+              <tr>
+                {headers.map((header, index) => (
+                  <th key={index} style={{ minWidth: '50px', maxWidth: '70px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {header || 'N/A'}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={cellIndex} style={{ minWidth: '50px', maxWidth: '70px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {cell !== null && cell !== undefined ? cell : '-'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="betting-table-container">
-      <div className="search-container">
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={handleSearchChange}
-          placeholder="Search by match id..."
-          className="search-input"
-        />
-        {suggestions.length > 0 && (
-          <ul className="suggestions">
-            {suggestions.map((suggestion, index) => (
-              <li
-                key={suggestion}
-                onClick={() => setSearchTerm(suggestion)}
-                className="suggestion-item"
-              >
-                {suggestion}
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="betting-container">
+      <div className="match-header">
+        <div className="match-teams">
+          <h2>{`${homeTeam} (0/0)`}</h2>
+        </div>
+        <div className="match-time">
+          <div className="time-date">
+            <span className="date">{matchDate}</span>
+          </div>
+        </div>
+        <div className="match-teams">
+          <h2>{awayTeam}</h2>
+        </div>
       </div>
 
-      {filteredData.length === 0 && <div>No matches found</div>}
-
-      {filteredData.map((item, index) => {
-        const match = item?.matches?.match;
-        if (!match || !match.localteam?.name || !match.awayteam?.name || !match.id) {
-          console.log('Invalid match data:', item);
-          return <div key={index}>Invalid match data</div>;
-        }
-
-        const tableData = getTableData(item);
-
-        return (
-          <div key={match.id} className="match-table">
-            <h2>
-              {match.localteam.name} vs {match.awayteam.name} (ID: {match.id})
-            </h2>
-            {tableData.length > 0 ? (
-              tableData.map((data, i) => {
-                if (!data.bookmaker || !Array.isArray(data.bookmaker)) {
-                  console.log('Invalid bookmaker data:', data.bookmaker);
-                  return <div key={i}>No bookmaker data available</div>;
-                }
-
-                return (
-                  <table key={`${match.id}-${data.value}-${i}`} className="betting-table">
-                    <thead>
-                      <tr>
-                        <th colSpan={data.bookmaker.length + 1}>{data.value}</th>
-                      </tr>
-                      <tr>
-                        <th>Odd Name</th>
-                        {data.bookmaker.map((book, j) => (
-                          <th key={`${book.id}-${j}`}>{book.name || 'Unknown Bookmaker'}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.bookmaker[0]?.odd && Array.isArray(data.bookmaker[0].odd) ? (
-                        data.bookmaker[0].odd.map((odd, j) => (
-                          <tr key={`${odd.name}-${j}`}>
-                            <td>{odd.name || 'Unknown Odd'}</td>
-                            {data.bookmaker.map((book, k) => (
-                              <td key={`${book.id}-${odd.name}-${k}`}>
-                                {book.odd?.find((o) => o.name === odd.name)?.us || '-'}
-                              </td>
-                            ))}
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={data.bookmaker.length + 1}>No odds data available</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                );
-              })
-            ) : (
-              <div>No table data available</div>
-            )}
-          </div>
-        );
-      })}
+      <div className="betting-section">
+        <div className="left-column">
+          {tableTypesToRender.map((type) => {
+            const { headers, rows } = transformOdds(type);
+            return renderTable(type, headers, rows);
+          })}
+        </div>
+      </div>
     </div>
   );
 };
 
-export default BettingTable;
+export default BettingTables;
