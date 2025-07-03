@@ -1,9 +1,7 @@
-
 import React, { useState, useMemo } from 'react';
 import data from '../../data.json';
 
 const BettingTables = () => {
-
   const matches = useMemo(() => {
     return data.data.flatMap((item) => {
       const matchData = item.matches.match;
@@ -11,117 +9,202 @@ const BettingTables = () => {
     }).filter((match) => match && match.id);
   }, []);
 
-  // State for search query and suggestions
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Filter matches based on search query
   const filteredMatches = useMemo(() => {
     return searchQuery
       ? matches.filter((match) =>
-        match.id?.toString().toLowerCase().includes(searchQuery.toLowerCase())
-      )
+          match.id?.toString().toLowerCase().includes(searchQuery.toLowerCase())
+        )
       : matches;
   }, [searchQuery, matches]);
 
-  // Get suggestions for match IDs
   const suggestions = useMemo(() => {
     return matches
       .filter((match) =>
         match.id?.toString().toLowerCase().includes(searchQuery.toLowerCase())
       )
-      .slice(0, 5); // Limit to 5 suggestions
+      .slice(0, 5);
   }, [searchQuery, matches]);
 
   const transformOdds = (typeValue, oddsTypes) => {
     const oddsType = oddsTypes.find((type) => type.value === typeValue);
     if (!oddsType || !Array.isArray(oddsType.bookmaker)) {
-      // console.warn(`No valid bookmaker data for betting type: ${typeValue}`);
       return { headers: [], rows: [] };
     }
 
-    const uniqueOddNames = new Set();
+    let headers = [];
     const rows = [];
 
-    oddsType.bookmaker.forEach((bm) => {
-      let oddsArray = [];
+    if (typeValue.includes("Handicap")) {
+      headers = ["Home", "Away"];
+      const handicaps = new Set();
 
-      // Handle different data structures based on betting type
-      if (typeValue.includes("Handicap") && bm.handicap) {
-        // Handle Asian Handicap (handicap can be array or object)
-        oddsArray = Array.isArray(bm.handicap)
-          ? bm.handicap.flatMap((h) =>
-            Array.isArray(h.odd)
-              ? h.odd.map((o) => ({
-                ...o,
-                name: `${o.name} (${h.name})`,
-              }))
-              : []
-          )
-          : Array.isArray(bm.handicap?.odd)
+      oddsType.bookmaker.forEach((bm) => {
+        let oddsArray = [];
+
+        if (bm.handicap) {
+          oddsArray = Array.isArray(bm.handicap)
+            ? bm.handicap.flatMap((h) =>
+                Array.isArray(h.odd)
+                  ? h.odd.map((o) => ({
+                      ...o,
+                      handicap: h.name,
+                      side: o.name.toLowerCase().includes("home") ? "Home" : "Away",
+                      value: parseFloat(o.value) || null,
+                    }))
+                  : []
+              )
+            : Array.isArray(bm.handicap?.odd)
             ? bm.handicap.odd.map((o) => ({
-              ...o,
-              name: `${o.name} (${bm.handicap.name})`,
-            }))
-            : [];
-      } else if (typeValue.includes("Over/Under") && bm.total) {
-        // Handle Over/Under (total can be array or object)
-        oddsArray = Array.isArray(bm.total)
-          ? bm.total.flatMap((t) =>
-            Array.isArray(t.odd)
-              ? t.odd.map((o) => ({
                 ...o,
-                name: `${o.name} (${t.name})`,
+                handicap: bm.handicap.name,
+                side: o.name.toLowerCase().includes("home") ? "Home" : "Away",
+                value: parseFloat(o.value) || null,
               }))
-              : []
-          )
-          : Array.isArray(bm.total?.odd)
-            ? bm.total.odd.map((o) => ({
-              ...o,
-              name: `${o.name} (${bm.total.name})`,
-            }))
             : [];
-      } else if (Array.isArray(bm.odd)) {
-        // Handle direct odds (e.g., 3Way Result, Home/Away, Odd/Even, Correct Score)
-        oddsArray = bm.odd.map((o) => ({ ...o, name: o.name }));
-      } else {
-        // Fallback for unexpected structures
-        // console.warn(
-        //   `Unexpected odds structure for bookmaker: ${bm.name || 'Unknown'} in type: ${typeValue}`,
-        //   bm
-        // );
-        oddsArray = [];
-      }
+        }
 
-      // Collect unique odd names
-      oddsArray.forEach((odd) => {
-        if (odd?.name) uniqueOddNames.add(odd.name);
+        oddsArray.forEach((odd) => {
+          if (odd.handicap) handicaps.add(odd.handicap);
+        });
+
+        const sortedHandicaps = Array.from(handicaps).sort(
+          (a, b) => parseFloat(a) - parseFloat(b)
+        );
+
+        sortedHandicaps.forEach((handicap) => {
+          const row = [];
+          const homeOdd = oddsArray.find(
+            (o) => o.handicap === handicap && o.side === "Home"
+          );
+          const awayOdd = oddsArray.find(
+            (o) => o.handicap === handicap && o.side === "Away"
+          );
+
+          row.push(homeOdd ? `${homeOdd.value} (${handicap})` : "-");
+          row.push(awayOdd ? `${awayOdd.value} (${handicap})` : "-");
+
+          if (row.some((cell) => cell !== "-")) {
+            rows.push(row);
+          }
+        });
       });
+    } else if (typeValue.includes("Over/Under")) {
+      headers = ["Over", "Under"];
+      const totals = new Set();
 
-      // Build row for this bookmaker
-      const row = [];
-      const sortedOddNames = Array.from(uniqueOddNames).sort();
-      sortedOddNames.forEach((oddName) => {
-        const odd = oddsArray.find((o) => o.name === oddName);
-        row.push(odd && odd.value ? parseFloat(odd.value) || '-' : '-');
+      oddsType.bookmaker.forEach((bm) => {
+        let oddsArray = [];
+
+        if (bm.total) {
+          oddsArray = Array.isArray(bm.total)
+            ? bm.total.flatMap((t) =>
+                Array.isArray(t.odd)
+                  ? t.odd.map((o) => ({
+                      ...o,
+                      total: t.name,
+                      side: o.name.toLowerCase().includes("over") ? "Over" : "Under",
+                      value: parseFloat(o.value) || null,
+                    }))
+                  : []
+              )
+            : Array.isArray(bm.total?.odd)
+            ? bm.total.odd.map((o) => ({
+                ...o,
+                total: bm.total.name,
+                side: o.name.toLowerCase().includes("over") ? "Over" : "Under",
+                value: parseFloat(o.value) || null,
+              }))
+            : [];
+        }
+
+        oddsArray.forEach((odd) => {
+          if (odd.total) totals.add(odd.total);
+        });
+
+        const sortedTotals = Array.from(totals).sort(
+          (a, b) => parseFloat(a) - parseFloat(b)
+        );
+
+        sortedTotals.forEach((total) => {
+          const row = [];
+          const overOdd = oddsArray.find(
+            (o) => o.total === total && o.side === "Over"
+          );
+          const underOdd = oddsArray.find(
+            (o) => o.total === total && o.side === "Under"
+          );
+
+          row.push(overOdd ? `${overOdd.value} (${total})` : "-");
+          row.push(underOdd ? `${underOdd.value} (${total})` : "-");
+
+          if (row.some((cell) => cell !== "-")) {
+            rows.push(row);
+          }
+        });
       });
+    } else if (typeValue.includes("Correct Score")) {
+      headers = ["Name", "US", "Value"];
 
-      // Only include rows with at least one valid odd
-      if (row.some((cell) => cell !== '-')) {
-        rows.push(row);
-      }
-    });
+      oddsType.bookmaker.forEach((bm) => {
+        let oddsArray = [];
 
-    const headers = Array.from(uniqueOddNames).sort();
-    if (headers.length > 0 && rows.length === 0) {
-      // console.warn(`No valid odds data for betting type: ${typeValue}, headers:`, headers);
+        if (bm.odd) {
+          oddsArray = Array.isArray(bm.odd)
+            ? bm.odd.map((o) => ({
+                name: o.name,
+                us: o.us,
+                value: parseFloat(o.value) || null,
+              }))
+            : [];
+        }
+
+        oddsArray.sort((a, b) => {
+          const [aHome, aAway] = a.name.split(":").map(Number);
+          const [bHome, bAway] = b.name.split(":").map(Number);
+          const aTotal = aHome + aAway;
+          const bTotal = bHome + bAway;
+          return aTotal - bTotal || aHome - bHome;
+        });
+
+        oddsArray.forEach((odd) => {
+          const row = [odd.name, odd.us, odd.value || "-"];
+          rows.push(row);
+        });
+      });
+    } else {
+      const uniqueOddNames = new Set();
+      oddsType.bookmaker.forEach((bm) => {
+        let oddsArray = Array.isArray(bm.odd)
+          ? bm.odd.map((o) => ({ ...o, name: o.name }))
+          : [];
+
+        oddsArray.forEach((odd) => {
+          if (odd?.name) uniqueOddNames.add(odd.name);
+        });
+
+        const row = [];
+        const sortedOddNames = Array.from(uniqueOddNames).sort();
+        sortedOddNames.forEach((oddName) => {
+          const odd = oddsArray.find((o) => o.name === oddName);
+          row.push(odd && odd.value ? parseFloat(odd.value) || "-" : "-");
+        });
+
+        if (row.some((cell) => cell !== "-")) {
+          rows.push(row);
+        }
+      });
+      headers = Array.from(uniqueOddNames).sort();
     }
+
     return { headers, rows };
   };
 
   const renderTable = (title, headers, rows) => {
     if (headers.length === 0 || rows.length === 0) {
-      return null; // Don't render empty tables
+      return null;
     }
 
     return (
@@ -136,8 +219,8 @@ const BettingTables = () => {
                     key={index}
                     className="px-4 py-2 border text-left text-sm font-medium text-gray-700"
                     style={{
-                      minWidth: '50px',
-                      maxWidth: '70px',
+                      minWidth: '70px',
+                      maxWidth: '100px',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -156,8 +239,8 @@ const BettingTables = () => {
                       key={cellIndex}
                       className="px-4 py-2 border text-sm text-gray-600"
                       style={{
-                        minWidth: '50px',
-                        maxWidth: '70px',
+                        minWidth: '70px',
+                        maxWidth: '100px',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -175,14 +258,13 @@ const BettingTables = () => {
     );
   };
 
-  // Precompute odds for all matches to ensure consistent hook usage
   const matchOdds = useMemo(() => {
     return matches.map((match) => {
       const oddsTypes = Array.isArray(match.odds?.type)
         ? match.odds.type
         : match.odds?.type
-          ? [match.odds.type]
-          : [];
+        ? [match.odds.type]
+        : [];
       return {
         match,
         precomputedOdds: oddsTypes.map((type) => ({
@@ -195,7 +277,6 @@ const BettingTables = () => {
 
   return (
     <div className="betting-container p-6 max-w-7xl mx-auto">
-      {/* Search Input */}
       <div className="mb-6">
         <input
           type="text"
@@ -209,7 +290,6 @@ const BettingTables = () => {
           placeholder="Search by Match ID..."
           className="w-full p-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        {/* Suggestions Dropdown */}
         {showSuggestions && suggestions.length > 0 && (
           <div className="absolute z-10 bg-white border rounded-lg shadow-lg mt-1 w-full max-w-md">
             {suggestions.map((match, index) => (
@@ -234,7 +314,6 @@ const BettingTables = () => {
         )}
       </div>
 
-      {/* Match Results */}
       {filteredMatches.length === 0 && searchQuery && (
         <p className="text-center text-gray-500">No matches found for ID "{searchQuery}"</p>
       )}
@@ -243,9 +322,7 @@ const BettingTables = () => {
         const awayTeam = match.awayteam?.name || 'Unknown Away Team';
         const matchDate = match.date || 'Unknown Date';
 
-        // Skip invalid matches after computing hooks
         if (!match.localteam?.name || !match.awayteam?.name || !match.date || !match.odds?.type) {
-          // console.warn(`Skipping match ${match.id} due to missing data`);
           return null;
         }
 
